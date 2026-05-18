@@ -117,6 +117,13 @@ dk1_daily %>%
   labs(title = "STL decomposition of DK1 prices (weekly seasonality)")
 
 
+# --- Wind generation distribution ---
+
+# Daily totals across the 2015-2026 modelling sample.
+
+summary(dk1_daily$wind_mwh)
+
+
 # =============================================================
 # 3. STATIONARITY TESTS ON LEVELS
 # =============================================================
@@ -255,6 +262,7 @@ dk1_post <- dk1_daily %>%
 
 range(dk1_post$date)
 nrow(dk1_post)
+summary(dk1_post$wind_mwh)
 
 
 # --- Visual check on the restricted differenced series ---
