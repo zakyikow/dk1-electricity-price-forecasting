@@ -4,9 +4,9 @@
 
 ### Day-Ahead Spot Price Models for Denmark's Western Bidding Zone
 
-[![Built with](https://img.shields.io/badge/Built_with-R_%7C_RStudio-276DC3?logo=r&logoColor=white)]()
-[![Methods](https://img.shields.io/badge/Methods-ARIMA_%7C_ETS_%7C_Dynamic_Regression-1b68bc)]()
-[![Data](https://img.shields.io/badge/Data-energidataservice.dk-1A8865)]()
+[![Built with](https://img.shields.io/badge/Built_with-R_%7C_RStudio-2469bd?logo=r&logoColor=white)]()
+[![Methods](https://img.shields.io/badge/Methods-ARIMA_%7C_ETS_%7C_Dynamic_Regression-674fff)]()
+[![Data](https://img.shields.io/badge/Data-energidataservice.dk-00525f)](https://www.energidataservice.dk/)
 
 *Time series forecasting of daily DK1 day-ahead electricity prices, comparing ARIMA, ETS, and dynamic regression across the 2022 European energy crisis on a 30-day horizon.*
 
@@ -16,7 +16,7 @@
 
 <br>
 
-## 📖 Overview
+## Overview
 
 This project forecasts daily day-ahead electricity spot prices in DK1, the Danish bidding zone covering Jutland and Funen. The goal is to identify the model class that best forecasts DK1 prices on a 30-day horizon and to quantify the role of wind generation as a structural driver of price.
 
@@ -31,7 +31,7 @@ Test:  2026-01-01 to 2026-04-19 (109 obs)
 
 <br>
 
-## 📊 Results
+## Results
 
 **Headline model: ARIMA(3,1,1)(2,0,0)[7] on raw post-2022 data**, selected on residual diagnostics and prediction-interval calibration rather than point accuracy alone.
 
@@ -71,21 +71,21 @@ Test:  2026-01-01 to 2026-04-19 (109 obs)
 
 <br>
 
-## 🔍 Methodology
+## Methodology
 
-**Stationarity diagnosis.** ADF and KPSS on the full-sample price series give a textbook disagreement: ADF rejects unit root decisively, KPSS strongly rejects stationarity. The diagnosis flags structural instability rather than a unit root.
+1. **Stationarity diagnosis.** ADF and KPSS on the full-sample price series give a textbook disagreement: ADF rejects unit root decisively, KPSS strongly rejects stationarity. The diagnosis flags structural instability rather than a unit root.
 
-**Structural break detection.** QLR test on the first-differenced series with 10% trimming locates a break at 2022-02-26 (supF = 22.5, p = 0.00048). A second QLR pass on the restricted sample finds no statistically significant additional break, so one restriction is sufficient.
+2. **Structural break detection.** QLR test on the first-differenced series with 10% trimming locates a break at 2022-02-26 (supF = 22.5, p = 0.00048). A second QLR pass on the restricted sample finds no statistically significant additional break, so one restriction is sufficient.
 
-**Model identification.** ACF/PACF of the doubly-differenced restricted series shows a single negative spike at lag 1, a large negative spike at lag 7, and geometric PACF decay at seasonal lags 7, 14, 21, 28, 35. The manual identification is ARIMA(0,1,1)(0,1,1)[7]. Auto-ARIMA on the same data selects ARIMA(3,1,1)(2,0,0)[7] with D = 0, handling weekly persistence via seasonal AR(2) rather than seasonal differencing.
+3. **Model identification.** ACF/PACF of the doubly-differenced restricted series shows a single negative spike at lag 1, a large negative spike at lag 7, and geometric PACF decay at seasonal lags 7, 14, 21, 28, 35. The manual identification is ARIMA(0,1,1)(0,1,1)[7]. Auto-ARIMA on the same data selects ARIMA(3,1,1)(2,0,0)[7] with D = 0, handling weekly persistence via seasonal AR(2) rather than seasonal differencing.
 
-**Estimation and Box-Cox sensitivity.** Four models are fitted on the post-2022 training set: manual airline ARIMA, auto-ARIMA, ETS(A,A,A), and dynamic regression with wind generation. Box-Cox is attempted as a sensitivity check against visible heteroskedasticity but rejected on evidence: the shift required to handle negative prices turns the most-negative day into a >4σ outlier under the log-like transformation.
+4. **Estimation and Box-Cox sensitivity.** Four models are fitted on the post-2022 training set: manual airline ARIMA, auto-ARIMA, ETS(A,A,A), and dynamic regression with wind generation. Box-Cox is attempted as a sensitivity check against visible heteroskedasticity but rejected on evidence: the shift required to handle negative prices turns the most-negative day into a >4σ outlier under the log-like transformation.
 
-**Forecast evaluation.** Two regimes: a single train/test split (test 2026-01-01 to 2026-04-19) and rolling-origin CV with `stretch_tsibble(.init = 730, .step = 30)` producing 26 windows each followed by a 30-day-ahead forecast. Dynamic regression is excluded from CV because honest evaluation would require forecasting wind for each horizon.
+5. **Forecast evaluation.** Two regimes: a single train/test split (test 2026-01-01 to 2026-04-19) and rolling-origin CV with `stretch_tsibble(.init = 730, .step = 30)` producing 26 windows each followed by a 30-day-ahead forecast. Dynamic regression is excluded from CV because honest evaluation would require forecasting wind for each horizon.
 
 <br>
 
-## 🗃️ Data Sources
+## Data Sources
 
 All data is pulled from [**energidataservice.dk**](https://www.energidataservice.dk/), the free official API maintained by Energinet (the Danish transmission system operator).
 
@@ -99,13 +99,13 @@ The schema migration on 2025-10-01 (when energidataservice.dk replaced the hourl
 
 <br>
 
-## 🗂️ Repository Structure
+## Repository Structure
 
 ```
 dk1-electricity-price-forecasting/
 │
 ├── 01_data_preparation.R   # Raw CSV loading, daily aggregation, schema-migration stitching
-├── 02_analysis.R           # EDA through rolling-origin cross-validation
+├── 02_analysis.R           # EDA, stationarity & break tests, ARIMA/ETS/dyn-reg, forecasting, CV
 │
 ├── data/
 │   ├── raw/                # gitignored, see data/raw/README.md for download instructions
@@ -126,7 +126,7 @@ dk1-electricity-price-forecasting/
 
 <br>
 
-## 🛠️ Technologies Used
+## Technologies Used
 
 * **R 4.x** in **RStudio**
 * [`fpp3`](https://otexts.com/fpp3/), bundling `tsibble`, `fable`, and `feasts` for the tsibble workflow, ARIMA / ETS / dynamic regression fitting, and forecast accuracy.
@@ -136,7 +136,7 @@ dk1-electricity-price-forecasting/
 
 <br>
 
-## 🚀 How to Run
+## How to Run
 
 1. Clone the repository and open `dk1-electricity-price-forecasting.Rproj` in RStudio.
 2. Install dependencies:
@@ -152,7 +152,7 @@ dk1-electricity-price-forecasting/
 
 <br>
 
-## ⚠️ Known Limitations
+## Known Limitations
 
 1. **Daily aggregation discards intra-day structure.** Real market participants trade in hourly (and now quarter-hourly) blocks; high-frequency dynamics are averaged out by the daily mean.
 2. **Heteroskedasticity is accepted, not modelled.** All four models show 2022-2023 residual variance roughly 4x the post-2024 level. Point forecasts are unbiased, but prediction intervals should be interpreted with caution.
