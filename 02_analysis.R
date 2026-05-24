@@ -49,7 +49,7 @@ dk1_daily %>%
            alpha = 0.15, fill = "red") +
   labs(
     title    = "DK1 Day-Ahead Electricity Price",
-    subtitle = "Shaded: 2021-2023 European energy crisis",
+    subtitle = "Shaded - 2021-2023 European energy crisis",
     x = NULL, y = "EUR/MWh"
   )
 
@@ -62,7 +62,7 @@ dk1_daily %>%
 
 dk1_daily %>%
   gg_tsdisplay(price_eur, plot_type = "partial", lag_max = 60) +
-  labs(title = "DK1 price: time plot, ACF, PACF")
+  labs(title = "DK1 price - time plot, ACF, PACF")
 
 
 # --- Seasonal plot, weekly cycle ---
@@ -185,7 +185,7 @@ summary(ur.kpss(dk1_daily %>% select(d_price) %>% as.ts(), type = "mu"))
 
 dk1_daily %>%
   gg_tsdisplay(d_price, plot_type = "partial", lag_max = 60) +
-  labs(title = "First-differenced DK1 price: time plot, ACF, PACF")
+  labs(title = "First-differenced DK1 price - time plot, ACF, PACF")
 
 
 # =============================================================
@@ -225,7 +225,7 @@ breakpoints(qlr, alpha = 0.01)
 
 # --- Plot the F-statistics with the estimated break date ---
 
-plot(qlr, alpha = 0.1, main = "QLR / supF: structural-break F statistics")
+plot(qlr, alpha = 0.1, main = "QLR supF - structural-break F statistics")
 lines(breakpoints(qlr))
 
 
@@ -269,7 +269,7 @@ summary(dk1_post$wind_mwh)
 
 dk1_post %>%
   gg_tsdisplay(d_price, plot_type = "partial", lag_max = 60) +
-  labs(title = "Post-break d_price: time plot, ACF, PACF")
+  labs(title = "Post-break d_price - time plot, ACF, PACF")
 
 
 # --- Re-run the QLR test on the restricted differenced series ---
@@ -298,7 +298,7 @@ breakpoints(qlr_post, alpha = 0.01)
 # --- Plot the F-statistics for the restricted sample ---
 
 plot(qlr_post, alpha = 0.1,
-     main = "QLR / supF: F statistics, restricted sample")
+     main = "QLR supF - F statistics, restricted sample")
 lines(breakpoints(qlr_post))
 
 
