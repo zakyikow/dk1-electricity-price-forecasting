@@ -9,7 +9,6 @@ library(fpp3)
 library(here)   # robust file paths across machines
 library(knitr)
 library(urca)
-library(tseries)
 library(strucchange)
 
 # Load the cleaned dataset prepared in 01_data_preparation.R.
@@ -178,7 +177,7 @@ dk1_daily <- dk1_daily %>%
 summary(ur.df(dk1_daily %>% select(d_price) %>% filter(!is.na(d_price)) %>% as.ts(),
               type = "none", lag = 24, selectlags = "AIC"))
 
-summary(ur.kpss(dk1_daily %>% select(d_price) %>% as.ts(), type = "mu"))
+summary(ur.kpss(dk1_daily %>% select(d_price) %>% filter(!is.na(d_price)) %>% as.ts(), type = "mu"))
 
 
 # --- Visual sanity check on the differenced series ---
@@ -207,7 +206,7 @@ d_ts <- dk1_daily %>%
 
 dprice_ts <- cbind(
   Lag0 = d_ts,
-  Lag1 = stats::lag(d_ts)
+  Lag1 = stats::lag(d_ts, k = -1)   # k = -1 gives a true lag; default k = 1 is a lead
 )
 
 
@@ -243,12 +242,16 @@ dk1_daily %>%
 # 6. RE-TEST IN THE RESTRICTED POST-BREAK SAMPLE
 # =============================================================
 
-# The supF test pinpointed 2022-02-26, two days after Russia's
-# invasion of Ukraine. Restrict the sample to dates from the
-# break onward and re-run the structural-break and stationarity
-# tests. If the restricted sample still shows instability or
-# unit-root behaviour, a further restriction or second
-# differencing will follow.
+# The supF test pinpointed 2021-12-19, which sits in the late-2021
+# European gas crisis: Gazprom had cut Yamal-Europe pipeline flows,
+# TTF gas hit record highs around 21 December, and cold weather was
+# draining storage. The regime shift therefore predates Russia's
+# February 2022 invasion of Ukraine, although that later event almost
+# certainly intensified an already-shifted regime. Restrict the sample
+# to dates from the break onward and re-run the structural-break and
+# stationarity tests. If the restricted sample still shows
+# instability or unit-root behaviour, a further restriction or
+# second differencing will follow.
 
 # --- Restrict the sample and re-compute the first difference ---
 
@@ -257,7 +260,7 @@ dk1_daily %>%
 # with wind as exogenous regressor in Section 13.
 
 dk1_post <- dk1_daily %>%
-  filter_index("2022-02-26" ~ .) %>%
+  filter_index("2021-12-19" ~ .) %>%
   mutate(d_price = difference(price_eur))
 
 range(dk1_post$date)
@@ -285,7 +288,7 @@ d_post_ts <- dk1_post %>%
 
 dprice_post_ts <- cbind(
   Lag0 = d_post_ts,
-  Lag1 = stats::lag(d_post_ts)
+  Lag1 = stats::lag(d_post_ts, k = -1)   # k = -1 gives a true lag; default k = 1 is a lead
 )
 
 qlr_post <- Fstats(Lag0 ~ 1 + Lag1, data = dprice_post_ts, from = 0.15)
@@ -343,7 +346,7 @@ summary(ur.kpss(as.ts(dk1_post$price_eur), type = "mu"))
 summary(ur.df(dk1_post %>% select(d_price) %>% filter(!is.na(d_price)) %>% as.ts(),
               type = "none", lag = 24, selectlags = "AIC"))
 
-summary(ur.kpss(dk1_post %>% select(d_price) %>% as.ts(), type = "mu"))
+summary(ur.kpss(dk1_post %>% select(d_price) %>% filter(!is.na(d_price)) %>% as.ts(), type = "mu"))
 
 
 # =============================================================
@@ -370,7 +373,7 @@ dk1_post <- dk1_post %>%
 summary(ur.df(dk1_post %>% select(dd_price) %>% filter(!is.na(dd_price)) %>% as.ts(),
               type = "none", lag = 24, selectlags = "AIC"))
 
-summary(ur.kpss(dk1_post %>% select(dd_price) %>% as.ts(), type = "mu"))
+summary(ur.kpss(dk1_post %>% select(dd_price) %>% filter(!is.na(dd_price)) %>% as.ts(), type = "mu"))
 
 
 # --- Time plot, ACF, PACF of the doubly-differenced series ---
@@ -472,25 +475,25 @@ augment(models %>% select(ets)) %>%
 # abs(min) + 1 first; the inverse transform recovers EUR/MWh
 # automatically at forecast time.
 
-# --- Compute shift constant and lambda on the restricted sample ---
+# --- Compute shift constant and lambda on the TRAINING sample ---
 
-shift_constant <- abs(min(dk1_post$price_eur, na.rm = TRUE)) + 1
+# Compute both on train only: using the full dk1_post would let test-period
+# observations influence the transformation parameter, which is data leakage.
+
+train <- dk1_post %>%
+  filter_index(. ~ "2025-12-31")
+
+shift_constant <- abs(min(train$price_eur, na.rm = TRUE)) + 1
 print(shift_constant)
 
-dk1_post <- dk1_post %>%
+train <- train %>%
   mutate(price_shifted = price_eur + shift_constant)
 
-lambda <- dk1_post %>%
+lambda <- train %>%
   features(price_shifted, features = guerrero) %>%
   pull(lambda_guerrero)
 
 print(lambda)
-
-
-# --- Refresh train so it carries the shifted column ---
-
-train <- dk1_post %>%
-  filter_index(. ~ "2025-12-31")
 
 
 # --- Fit the same three model types on Box-Cox transformed data ---
@@ -538,14 +541,14 @@ augment(models_bc %>% select(ets_bc)) %>%
 # 13. DYNAMIC REGRESSION AND FORECAST THE TEST PERIOD
 # =============================================================
 
-# Box-Cox transformation did not improve diagnostics: a single
-# extreme outlier from the most-negative price day was amplified
-# by the log on the shifted series, inflating Ljung-Box statistics
-# across all three transformed models (290, 257, 244) far above
-# their raw counterparts (27.4, 134, 169). We therefore proceed
-# with raw-data models. We then add dynamic regression with wind
-# generation as a third method family, completing the comparison
-# across ARIMA, ETS, and dynamic regression.
+# Box-Cox transformation did not improve diagnostics: the
+# negative-price outlier was amplified by the log on the shifted
+# series, and Ljung-Box statistics on transformed-data residuals
+# came out uniformly higher than on raw-data residuals across all
+# three models. We therefore proceed with raw-data models. We then
+# add dynamic regression with wind generation as a third method
+# family, completing the comparison across ARIMA, ETS, and dynamic
+# regression.
 
 # --- Define training and test sets ---
 
@@ -576,11 +579,11 @@ models <- train %>%
 models %>% select(dyn_reg) %>% report()
 models %>% select(dyn_reg) %>% gg_tsresiduals(type = "innovation")
 
-# dyn_reg has LM with ARIMA(1,1,3)(2,0,0)[7] errors, so 6 ARMA
+# dyn_reg has LM with ARIMA(1,1,2)(2,0,0)[7] errors, so 5 ARMA
 # params (the wind_mwh regression coefficient does not enter
 # the dof correction).
 augment(models %>% select(dyn_reg)) %>%
-  features(.resid, features = ljung_box, lag = 20, dof = 6)
+  features(.resid, features = ljung_box, lag = 20, dof = 5)
 
 
 # --- Forecast over the test period ---
