@@ -11,6 +11,25 @@ library(knitr)
 library(urca)
 library(strucchange)
 
+# Suppress Rplots.pdf when run via Rscript. ggsave() and png() open and
+# close their own devices, so anything routed to the default device would
+# otherwise leak into an unwanted Rplots.pdf in the working directory.
+# Interactive RStudio sessions still get the normal plot pane.
+if (!interactive()) pdf(NULL)
+
+# Where to save figures used in the report. Re-running 02_analysis.R
+# end-to-end overwrites every PNG under figures/02_analysis/, so the
+# report figures stay in sync with the latest model fits with no manual
+# exporting. Each top-level section block writes into its own subfolder.
+fig_root <- here("figures", "02_analysis")
+dir.create(fig_root, showWarnings = FALSE, recursive = TRUE)
+
+save_fig <- function(plot, name, width = 7, height = 4, dpi = 300) {
+  path <- file.path(fig_root, name)
+  dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
+  ggsave(path, plot, width = width, height = height, dpi = dpi, units = "in")
+}
+
 # Load the cleaned dataset prepared in 01_data_preparation.R.
 dk1_daily <- readRDS(here("data/clean/dk1_daily.rds"))
 
@@ -40,7 +59,7 @@ print(lambda)
 
 # --- Time plot, with energy-crisis period shaded ---
 
-dk1_daily %>%
+p_eda_price <- dk1_daily %>%
   autoplot(price_eur) +
   annotate("rect",
            xmin = as_date("2021-09-01"), xmax = as_date("2023-06-30"),
@@ -51,6 +70,7 @@ dk1_daily %>%
     subtitle = "Shaded - 2021-2023 European energy crisis",
     x = NULL, y = "EUR/MWh"
   )
+save_fig(p_eda_price, "02_eda/01_DK1 Day-Ahead Electricity Price.png")
 
 
 # --- Time plot, ACF, PACF ---
@@ -59,33 +79,41 @@ dk1_daily %>%
 # cycle (period 7) to repeat several times and to see whether
 # persistence decays slowly, which would point to a unit root.
 
-dk1_daily %>%
+p_eda_tsdisplay <- dk1_daily %>%
   gg_tsdisplay(price_eur, plot_type = "partial", lag_max = 60) +
   labs(title = "DK1 price - time plot, ACF, PACF")
+save_fig(p_eda_tsdisplay,
+         "02_eda/02_DK1 price - time plot, ACF, PACF.png", height = 5)
 
 
 # --- Seasonal plot, weekly cycle ---
 
-dk1_daily %>%
+p_eda_season_week <- dk1_daily %>%
   gg_season(price_eur, period = "week") +
   labs(title = "Weekly seasonality of DK1 prices",
        y = "EUR/MWh")
+save_fig(p_eda_season_week,
+         "02_eda/03_Weekly seasonality of DK1 prices.png")
 
 
 # --- Seasonal plot, annual cycle ---
 
-dk1_daily %>%
+p_eda_season_year <- dk1_daily %>%
   gg_season(price_eur, period = "year") +
   labs(title = "Annual seasonality of DK1 prices",
        y = "EUR/MWh")
+save_fig(p_eda_season_year,
+         "02_eda/04_Annual seasonality of DK1 prices.png")
 
 
 # --- Subseries plot, day-of-week ---
 
-dk1_daily %>%
+p_eda_subseries <- dk1_daily %>%
   gg_subseries(price_eur, period = "week") +
   labs(title = "DK1 prices by day of week",
        y = "EUR/MWh")
+save_fig(p_eda_subseries,
+         "02_eda/05_DK1 prices by day of week.png")
 
 
 # --- Lag plot, weekly horizon ---
@@ -94,9 +122,11 @@ dk1_daily %>%
 # are the most informative view: they show the day-by-day persistence
 # inside one weekly cycle.
 
-dk1_daily %>%
+p_eda_lag <- dk1_daily %>%
   gg_lag(price_eur, lags = 1:7, geom = "point") +
   labs(title = "Lag plot of DK1 prices, lags 1-7")
+save_fig(p_eda_lag,
+         "02_eda/06_Lag plot of DK1 prices, lags 1-7.png", height = 6)
 
 
 # --- STL decomposition, weekly seasonality ---
@@ -108,12 +138,15 @@ dk1_daily %>%
 # retains visible annual structure, add a year-period seasonal term
 # in a follow-up.
 
-dk1_daily %>%
+p_eda_stl <- dk1_daily %>%
   model(STL(price_eur ~ season(period = 7) + trend(window = 21),
             robust = TRUE)) %>%
   components() %>%
   autoplot() +
   labs(title = "STL decomposition of DK1 prices (weekly seasonality)")
+save_fig(p_eda_stl,
+         "02_eda/07_STL decomposition of DK1 prices (weekly seasonality).png",
+         height = 6)
 
 
 # --- Wind generation distribution ---
@@ -182,9 +215,12 @@ summary(ur.kpss(dk1_daily %>% select(d_price) %>% filter(!is.na(d_price)) %>% as
 
 # --- Visual sanity check on the differenced series ---
 
-dk1_daily %>%
+p_diff_tsdisplay <- dk1_daily %>%
   gg_tsdisplay(d_price, plot_type = "partial", lag_max = 60) +
   labs(title = "First-differenced DK1 price - time plot, ACF, PACF")
+save_fig(p_diff_tsdisplay,
+         "04_differencing/01_First-differenced DK1 price - time plot, ACF, PACF.png",
+         height = 5)
 
 
 # =============================================================
@@ -224,8 +260,14 @@ breakpoints(qlr, alpha = 0.01)
 
 # --- Plot the F-statistics with the estimated break date ---
 
+dir.create(file.path(fig_root, "05_break_full"),
+           showWarnings = FALSE, recursive = TRUE)
+png(file.path(fig_root, "05_break_full",
+              "01_QLR supF - structural-break F statistics.png"),
+    width = 7, height = 4, units = "in", res = 300)
 plot(qlr, alpha = 0.1, main = "QLR supF - structural-break F statistics")
 lines(breakpoints(qlr))
+dev.off()
 
 
 # --- Map the breakpoint index back to a calendar date ---
@@ -270,9 +312,12 @@ summary(dk1_post$wind_mwh)
 
 # --- Visual check on the restricted differenced series ---
 
-dk1_post %>%
+p_post_diff_tsdisplay <- dk1_post %>%
   gg_tsdisplay(d_price, plot_type = "partial", lag_max = 60) +
   labs(title = "Post-break d_price - time plot, ACF, PACF")
+save_fig(p_post_diff_tsdisplay,
+         "06_break_restricted/01_Post-break d_price - time plot, ACF, PACF.png",
+         height = 5)
 
 
 # --- Re-run the QLR test on the restricted differenced series ---
@@ -300,9 +345,15 @@ breakpoints(qlr_post, alpha = 0.01)
 
 # --- Plot the F-statistics for the restricted sample ---
 
+dir.create(file.path(fig_root, "06_break_restricted"),
+           showWarnings = FALSE, recursive = TRUE)
+png(file.path(fig_root, "06_break_restricted",
+              "02_QLR supF - F statistics, restricted sample.png"),
+    width = 7, height = 4, units = "in", res = 300)
 plot(qlr_post, alpha = 0.1,
      main = "QLR supF - F statistics, restricted sample")
 lines(breakpoints(qlr_post))
+dev.off()
 
 
 # --- Map any restricted-sample breakpoint back to a date ---
@@ -378,9 +429,12 @@ summary(ur.kpss(dk1_post %>% select(dd_price) %>% filter(!is.na(dd_price)) %>% a
 
 # --- Time plot, ACF, PACF of the doubly-differenced series ---
 
-dk1_post %>%
+p_dd_tsdisplay <- dk1_post %>%
   gg_tsdisplay(dd_price, plot_type = "partial", lag_max = 60) +
   labs(title = "Seasonally + first differenced post-break d_price")
+save_fig(p_dd_tsdisplay,
+         "08_identification/01_Seasonally + first differenced post-break d_price.png",
+         height = 5)
 
 
 # =============================================================
@@ -434,9 +488,18 @@ models %>% select(ets)         %>% report()
 # gg_tsresiduals() shows the residual time plot, ACF, and
 # distribution. type = "innovation" uses one-step-ahead errors.
 
-models %>% select(arma_manual) %>% gg_tsresiduals(type = "innovation")
-models %>% select(arma_auto)   %>% gg_tsresiduals(type = "innovation")
-models %>% select(ets)         %>% gg_tsresiduals(type = "innovation")
+p_resid_manual <- models %>% select(arma_manual) %>% gg_tsresiduals(type = "innovation")
+p_resid_auto   <- models %>% select(arma_auto)   %>% gg_tsresiduals(type = "innovation")
+p_resid_ets    <- models %>% select(ets)         %>% gg_tsresiduals(type = "innovation")
+save_fig(p_resid_manual,
+         "10_diagnostics_raw/01_Arima Manual Residual Diagnostic Raw.png",
+         height = 5)
+save_fig(p_resid_auto,
+         "10_diagnostics_raw/02_Arima Auto Residual Diagnostic Raw.png",
+         height = 5)
+save_fig(p_resid_ets,
+         "10_diagnostics_raw/03_ETS Residual Diagnostic Raw.png",
+         height = 5)
 
 
 # =============================================================
@@ -515,9 +578,18 @@ models_bc %>% select(ets_bc)         %>% report()
 
 # --- Visual residual diagnostics ---
 
-models_bc %>% select(arma_manual_bc) %>% gg_tsresiduals(type = "innovation")
-models_bc %>% select(arma_auto_bc)   %>% gg_tsresiduals(type = "innovation")
-models_bc %>% select(ets_bc)         %>% gg_tsresiduals(type = "innovation")
+p_resid_manual_bc <- models_bc %>% select(arma_manual_bc) %>% gg_tsresiduals(type = "innovation")
+p_resid_auto_bc   <- models_bc %>% select(arma_auto_bc)   %>% gg_tsresiduals(type = "innovation")
+p_resid_ets_bc    <- models_bc %>% select(ets_bc)         %>% gg_tsresiduals(type = "innovation")
+save_fig(p_resid_manual_bc,
+         "12_diagnostics_boxcox/01_Arima Manual Residual Diagnostic Box Cox.png",
+         height = 5)
+save_fig(p_resid_auto_bc,
+         "12_diagnostics_boxcox/02_Arima Auto Residual Diagnostic Box Cox.png",
+         height = 5)
+save_fig(p_resid_ets_bc,
+         "12_diagnostics_boxcox/03_ETS Residual Diagnostic Box Cox.png",
+         height = 5)
 
 
 # --- Ljung-Box on transformed-data residuals ---
@@ -577,7 +649,10 @@ models <- train %>%
 # --- Inspect the dynamic regression model ---
 
 models %>% select(dyn_reg) %>% report()
-models %>% select(dyn_reg) %>% gg_tsresiduals(type = "innovation")
+p_resid_dynreg <- models %>% select(dyn_reg) %>% gg_tsresiduals(type = "innovation")
+save_fig(p_resid_dynreg,
+         "13_dyn_reg/01_Dynamic Regression Residual Diagnostic.png",
+         height = 5)
 
 # dyn_reg has LM with ARIMA(1,1,2)(2,0,0)[7] errors, so 5 ARMA
 # params (the wind_mwh regression coefficient does not enter
@@ -602,29 +677,37 @@ forc <- models %>%
 # Filter the backdrop to mid-2025 onward so the test period
 # is visible without the 2022-2023 spike compressing the y-axis.
 
-forc %>%
+p_fc_manual <- forc %>%
   filter(.model == "arma_manual") %>%
   autoplot(dk1_post %>% filter_index("2025-07-01" ~ .)) +
   labs(title = "Manual ARIMA (airline) forecast vs actual",
        y = "EUR/MWh")
+save_fig(p_fc_manual,
+         "14_forecasts/01_Manual ARIMA (airline) forecast vs actual.png")
 
-forc %>%
+p_fc_auto <- forc %>%
   filter(.model == "arma_auto") %>%
   autoplot(dk1_post %>% filter_index("2025-07-01" ~ .)) +
   labs(title = "Auto-ARIMA forecast vs actual",
        y = "EUR/MWh")
+save_fig(p_fc_auto,
+         "14_forecasts/02_Auto-ARIMA forecast vs actual.png")
 
-forc %>%
+p_fc_ets <- forc %>%
   filter(.model == "ets") %>%
   autoplot(dk1_post %>% filter_index("2025-07-01" ~ .)) +
   labs(title = "ETS forecast vs actual",
        y = "EUR/MWh")
+save_fig(p_fc_ets,
+         "14_forecasts/03_ETS forecast vs actual.png")
 
-forc %>%
+p_fc_dynreg <- forc %>%
   filter(.model == "dyn_reg") %>%
   autoplot(dk1_post %>% filter_index("2025-07-01" ~ .)) +
   labs(title = "Dynamic regression (wind) forecast vs actual",
        y = "EUR/MWh")
+save_fig(p_fc_dynreg,
+         "14_forecasts/04_Dynamic regression (wind) forecast vs actual.png")
 
 
 # =============================================================
